@@ -7,10 +7,12 @@ from beanie import init_beanie
 from app.models import User
 from app.routes.auth import router as auth_router 
 
+
 app = FastAPI(title="MenuMaster API")
 
 # This is the line that makes the routes appear in Swagger
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+
 
 @app.on_event("startup")
 async def startup_event():
