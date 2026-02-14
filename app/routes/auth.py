@@ -1,81 +1,78 @@
-import os
-from datetime import datetime, timedelta
-from typing import Optional
 from fastapi import APIRouter, HTTPException, status
+from app.models import UserCreate
+from app.services.auth_service import AuthService
 from pydantic import BaseModel, EmailStr
-from passlib.context import CryptContext
-import jwt  # PyJWT
-
-from app.models import User, UserCreate
 
 router = APIRouter()
 
-# Security configurations
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-key-change-me-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # Token valid for 24 hours
+# --- Request Models ---
 
-# Pydantic models for requests and responses
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-    username: str
+class VerifyRequest(BaseModel):
+    email: EmailStr
+    code: str
 
-# Helper function to generate JWT
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+class ResendCodeRequest(BaseModel):
+    email: EmailStr
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+# --- Routes ---
+
+@router.post("/register", status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 async def register(user_in: UserCreate):
-    # Check if user already exists in MongoDB
-    existing_user = await User.find_one(User.email == user_in.email)
-    if existing_user:
+    # Registration logic including initial code generation
+    user = await AuthService.register_user(user_in)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
             detail="User already exists"
         )
-    
-    # Encrypt the password
-    hashed = pwd_context.hash(user_in.password)
-    
-    # Create the Beanie document
-    new_user = User(
-        username=user_in.username,
-        email=user_in.email,
-        hashed_password=hashed
-    )
-    
-    await new_user.insert()
-    return {"message": "Registration successful", "id": str(new_user.id)}
+    return {"message": "Registration successful. Please check your email for the verification code.", "id": str(user.id)}
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", tags=["Authentication"])
 async def login(credentials: LoginRequest):
-    # 1. Search for the user by email
-    user = await User.find_one(User.email == credentials.email)
+    # Business logic moved to AuthService
+    user = await AuthService.authenticate_user(credentials.email, credentials.password)
     
-    # 2. Validate existence and password
-    if not user or not pwd_context.verify(credentials.password, user.hashed_password):
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid email or password"
         )
     
-    # 3. Create the JWT (Payload contains user ID and email)
-    access_token = create_access_token(
-        data={"sub": str(user.id), "email": user.email}
-    )
+    # Generate JWT for authenticated user
+    token = AuthService.create_access_token(user)
     
     return {
-        "access_token": access_token,
+        "access_token": token,
         "token_type": "bearer",
         "username": user.username
     }
+
+@router.post("/verify-email", tags=["Authentication"])
+async def verify_email(data: VerifyRequest):
+    # Verify the 6-digit code and check expiration
+    result = await AuthService.verify_email_code(data.email, data.code)
+    
+    if result == "INVALID":
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+    
+    if result == "EXPIRED":
+        raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+        
+    return {"message": "Email verified successfully"}
+
+@router.post("/resend-code", tags=["Authentication"])
+async def resend_code(data: ResendCodeRequest):
+    # Generate a new code and update the expiration time
+    result = await AuthService.resend_verification_code(data.email)
+    
+    if result is None:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    if result == "ALREADY_VERIFIED":
+        return {"message": "Account is already verified. You can log in."}
+        
+    return {"message": "A new verification code has been generated and sent."}
