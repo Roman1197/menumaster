@@ -71,6 +71,10 @@ class AuthService:
         user.verification_code = None
         user.code_expires_at = None
         await user.save()
+
+        # --- שליחת מייל ברוכים הבאים לאחר אימות מוצלח ---
+        await EmailService.send_welcome_email(user.email, user.username)
+        
         return "SUCCESS"
 
     @classmethod
@@ -97,3 +101,32 @@ class AuthService:
         expire = datetime.utcnow() + timedelta(minutes=cls.ACCESS_TOKEN_EXPIRE_MINUTES)
         to_encode = {"exp": expire, "sub": str(user.id), "email": user.email}
         return jwt.encode(to_encode, cls.SECRET_KEY, algorithm=cls.ALGORITHM)
+    
+    @classmethod
+    async def get_current_user(cls, token: str):
+        """
+        Decodes the JWT token and returns the user from the database.
+        Checks if the user exists and is verified.
+        """
+        try:
+            # Decode the JWT token
+            payload = jwt.decode(token, cls.SECRET_KEY, algorithms=[cls.ALGORITHM])
+            user_id = payload.get("sub")
+            if user_id is None:
+                raise HTTPException(status_code=401, detail="Invalid token payload")
+        except jwt.PyJWTError:
+            raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+        # Fetch the user from MongoDB
+        user = await User.get(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        # Hard enforcement: User must be verified to perform business actions
+        if not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Email verification required"
+            )
+            
+        return user

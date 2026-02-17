@@ -9,3 +9,4 @@ python-jose[cryptography]
 python-multipart
 python-dotenv
 PyJWT
+jinja2
