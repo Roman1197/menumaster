@@ -61,3 +61,31 @@ class MenuService:
                 return menu
                 
         raise HTTPException(status_code=404, detail="Category not found")
+    @classmethod
+    async def get_owner_menus(cls, owner_id: str) -> List[Menu]:
+        """
+        Retrieves all menus created by a specific owner.
+        Useful for the owner's management dashboard.
+        """
+        # We search the 'menus' collection where owner_id matches the user's ID
+        return await Menu.find(Menu.owner_id == owner_id).to_list()
+
+    @classmethod
+    async def delete_menu(cls, menu_id: str, user_id: str) -> bool:
+        """
+        Permanently deletes a menu only if the requester is the owner.
+        """
+        menu = await Menu.get(menu_id)
+        
+        if not menu:
+            raise HTTPException(status_code=404, detail="Menu not found")
+            
+        # Security Check: Ensure the person deleting is the owner
+        if menu.owner_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="You do not have permission to delete this menu"
+            )
+            
+        await menu.delete()
+        return True
