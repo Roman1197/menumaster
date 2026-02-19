@@ -2,6 +2,13 @@ from datetime import datetime
 from typing import List, Optional
 from beanie import Document, Indexed
 from pydantic import BaseModel, EmailStr
+from enum import Enum
+
+# --- User Roles ---
+class UserRole(str, Enum):
+    """Defined roles for Role-Based Access Control (RBAC)"""
+    RESTAURANT_OWNER = "owner"
+    REGULAR_USER = "customer"
 
 # --- Menu Related Models ---
 
@@ -32,11 +39,13 @@ class Menu(Document):
 
 class User(Document):
     """The User document stored in MongoDB with auth and verification fields"""
-    username: str
+    # FIXED: Using Indexed for uniqueness
+    username: Indexed(str, unique=True) 
     email: Indexed(str, unique=True)
     hashed_password: str
     is_verified: bool = False
     verification_code: Optional[str] = None
+    role: UserRole = UserRole.REGULAR_USER
     code_expires_at: Optional[datetime] = None
 
     class Settings:
@@ -47,3 +56,4 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
+    role: UserRole = UserRole.REGULAR_USER

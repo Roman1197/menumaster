@@ -99,7 +99,7 @@ class AuthService:
     @classmethod
     def create_access_token(cls, user: User):
         expire = datetime.utcnow() + timedelta(minutes=cls.ACCESS_TOKEN_EXPIRE_MINUTES)
-        to_encode = {"exp": expire, "sub": str(user.id), "email": user.email}
+        to_encode = {"exp": expire, "sub": str(user.id), "email": user.email,"role": user.role}
         return jwt.encode(to_encode, cls.SECRET_KEY, algorithm=cls.ALGORITHM)
     
     @classmethod
