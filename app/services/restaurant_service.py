@@ -1,6 +1,10 @@
 # app/services/restaurant_service.py
 from app.models import Restaurant, Menu
 from typing import List
+import logging
+from pymongo.errors import PyMongoError
+
+logger = logging.getLogger(__name__)
 
 class RestaurantService:
     @classmethod
@@ -26,3 +30,17 @@ class RestaurantService:
             await menu.save()
             return menu
         return None
+
+    @staticmethod
+    async def get_all_restaurants() -> List[Restaurant]:
+        """מאחזר את כל המסעדות הפעילות מהדאטהבייס"""
+        try:
+            # אנחנו מושכים רק מסעדות שמוגדרות כפעילות
+            restaurants = await Restaurant.find(Restaurant.is_active == True).to_list()
+            return restaurants
+        except PyMongoError as e:
+            logger.error(f"Database error while fetching restaurants: {str(e)}")
+            raise Exception("Database connectivity issue")
+        except Exception as e:
+            logger.error(f"Unexpected error in get_all_restaurants: {str(e)}")
+            raise e

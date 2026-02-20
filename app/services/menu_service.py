@@ -4,10 +4,14 @@ from beanie import PydanticObjectId
 from typing import List, Optional
 
 class MenuService:
-    @classmethod
-    async def create_menu(cls, title: str, owner_id: str) -> Menu:
-        """Creates a new empty menu for a specific user"""
-        new_menu = Menu(title=title, owner_id=owner_id)
+    @staticmethod
+    async def create_menu(title: str, owner_id: str, restaurant_id: str):
+        # עכשיו אנחנו מעבירים את כל שלושת השדות הנדרשים
+        new_menu = Menu(
+            title=title, 
+            owner_id=owner_id, 
+            restaurant_id=restaurant_id
+        )
         await new_menu.insert()
         return new_menu
 
