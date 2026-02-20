@@ -1,16 +1,60 @@
-from typing import Optional, List # <--- השורה הזו הייתה חסרה!
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional, List 
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from app.models import Restaurant, User
 from app.services.restaurant_service import RestaurantService
 from app.dependencies import get_restaurant_owner
 
+
 router = APIRouter()
 
-@router.post("/", tags=["Restaurants"])
+# --- Public Routes (נתיבים ציבוריים - ללא צורך בטוקן) ---
+
+@router.get("/", tags=["Public - Restaurants"])
+async def get_all_restaurants(response: Response):
+    """
+    מאחזר את כל המסעדות. אם אין מסעדות, מחזיר 204 No Content.
+    """
+    try:
+        restaurants = await RestaurantService.get_all_restaurants()
+        
+        if not restaurants:
+            response.status_code = status.HTTP_204_NO_CONTENT
+            return None # בסטטוס 204 לא מחזירים Body
+            
+        return restaurants
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service temporarily unavailable"
+        )
+
+# --- Protected Routes ---
+
+@router.get("/my-restaurants", tags=["Owner - Restaurants"])
+async def get_my_restaurants(
+    response: Response, 
+    current_user: User = Depends(get_restaurant_owner)
+):
+    """
+    מאחזר מסעדות של בעלים. אם אין, מחזיר 204.
+    """
+    try:
+        restaurants = await RestaurantService.get_owner_restaurants(str(current_user.id))
+        
+        if not restaurants:
+            response.status_code = status.HTTP_204_NO_CONTENT
+            return None
+            
+        return restaurants
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+        
+@router.post("/", tags=["Owner - Restaurants"])
 async def create_restaurant(
     name: str, 
     location: str, 
-    image_url: Optional[str] = None, # עכשיו Optional מוגדר
+    image_url: Optional[str] = None,
     current_user: User = Depends(get_restaurant_owner)
 ):
     """Creates a new restaurant for the authenticated owner."""
@@ -21,12 +65,9 @@ async def create_restaurant(
         image_url=image_url
     )
 
-@router.get("/my-restaurants", tags=["Restaurants"], response_model=List[Restaurant])
-async def get_my_restaurants(current_user: User = Depends(get_restaurant_owner)):
-    """Returns all restaurants belonging to the owner."""
-    return await RestaurantService.get_owner_restaurants(str(current_user.id))
 
-@router.patch("/{restaurant_id}/menus/{menu_id}/status", tags=["Restaurants"])
+
+@router.patch("/{restaurant_id}/menus/{menu_id}/status", tags=["Owner - Restaurants"])
 async def set_menu_status(
     restaurant_id: str,
     menu_id: str,
